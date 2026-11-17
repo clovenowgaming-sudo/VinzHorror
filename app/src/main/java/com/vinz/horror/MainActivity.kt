@@ -65,14 +65,14 @@ class MainActivity : Activity(), GameEvents {
         layout.setBackgroundColor(Color.BLACK)
 
         val title = TextView(this)
-        title.text = "HOLLOW WARD"
+        title.text = "VINZHORROR"
         title.setTextColor(Color.rgb(200, 40, 40))
         title.textSize = 42f
         title.gravity = Gravity.CENTER
         layout.addView(title)
 
         val subtitle = TextView(this)
-        subtitle.text = "it is not empty"
+        subtitle.text = "rumahnya kosong. katanya."
         subtitle.setTextColor(Color.GRAY)
         subtitle.textSize = 16f
         subtitle.gravity = Gravity.CENTER
@@ -82,7 +82,7 @@ class MainActivity : Activity(), GameEvents {
         layout.addView(subtitle, subParams)
 
         val playBtn = Button(this)
-        playBtn.text = "ENTER"
+        playBtn.text = "MASUK"
         playBtn.setOnClickListener { startGame() }
         layout.addView(playBtn, menuBtnParams())
 
@@ -92,7 +92,7 @@ class MainActivity : Activity(), GameEvents {
         layout.addView(settingsBtn, menuBtnParams())
 
         val quitBtn = Button(this)
-        quitBtn.text = "QUIT"
+        quitBtn.text = "KELUAR"
         quitBtn.setOnClickListener { finish() }
         layout.addView(quitBtn, menuBtnParams())
 
@@ -162,7 +162,7 @@ class MainActivity : Activity(), GameEvents {
         root.addView(h, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
 
         val flashBtn = Button(this)
-        flashBtn.text = "LIGHT"
+        flashBtn.text = "SENTER"
         flashBtn.setOnClickListener { renderer.flashlightToggle = true }
         val flashParams = FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         flashParams.gravity = Gravity.BOTTOM or Gravity.END

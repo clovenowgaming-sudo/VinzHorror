@@ -9,7 +9,7 @@ import kotlin.math.sqrt
 class GameView(context: Context, private val renderer: GameRenderer) : GLSurfaceView(context) {
 
     init {
-        setEGLContextClientVersion(2)
+        setEGLContextClientVersion(3) // requests the highest ES 3.x the device supports (3.0/3.1/3.2)
         setRenderer(renderer)
         renderMode = RENDERMODE_CONTINUOUSLY
     }
@@ -59,7 +59,8 @@ class GameView(context: Context, private val renderer: GameRenderer) : GLSurface
                             dx = dx / len * joystickRadius
                             dy = dy / len * joystickRadius
                         }
-                        renderer.moveX = (dx / joystickRadius).coerceIn(-1f, 1f)
+                        // Negated: fixes the reported left/right strafe being swapped.
+                        renderer.moveX = (-dx / joystickRadius).coerceIn(-1f, 1f)
                         renderer.moveZ = (-dy / joystickRadius).coerceIn(-1f, 1f)
                     } else if (id == lookTouchId) {
                         val dx = x - lookLastX

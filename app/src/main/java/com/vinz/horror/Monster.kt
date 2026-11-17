@@ -11,14 +11,21 @@ class Monster(startX: Int, startY: Int) {
     var x = (startX + 0.5f) * TILE
     var z = (startY + 0.5f) * TILE
     var state = MonsterState.PATROL
+    var isPhasing = false
+        private set
+
     private var path: List<Pair<Int, Int>> = emptyList()
     private var pathIndex = 0
     private val speed = 1.6f
     private var repathCooldown = 0f
     private var patrolTarget: Pair<Int, Int>? = null
+    private var phaseTimer = 0f
+    private var phaseCooldown = 3.5f
 
     fun update(dt: Float, maze: Maze, player: Player, size: Int, rnd: Random) {
         repathCooldown -= dt
+        phaseCooldown -= dt
+
         val playerCell = maze.worldToCell(player.x, player.z)
         val myCell = cellX to cellY
 
@@ -36,6 +43,34 @@ class Monster(startX: Int, startY: Int) {
             if (dot > 0.9f) seen = true
         }
         if (heard || seen) state = MonsterState.CHASE
+
+        // Haunted-house ability: while hunting, it can phase straight through
+        // walls for a short burst -- ignores the maze entirely during this
+        // window, then resumes normal grid pathing once it ends.
+        if (isPhasing) {
+            phaseTimer -= dt
+            val d = dist.coerceAtLeast(0.0001f)
+            val spd = speed * 2.1f
+            x += dx / d * spd * dt
+            z += dz / d * spd * dt
+            if (phaseTimer <= 0f) {
+                isPhasing = false
+                val (snapX, snapY) = maze.worldToCell(x, z)
+                cellX = snapX
+                cellY = snapY
+                path = emptyList()
+                pathIndex = 0
+                repathCooldown = 0f
+                phaseCooldown = 3.5f + rnd.nextFloat() * 2.5f
+            }
+            return
+        }
+
+        if (state == MonsterState.CHASE && phaseCooldown <= 0f && dist > 2.0f) {
+            isPhasing = true
+            phaseTimer = 1.4f
+            return
+        }
 
         if (state == MonsterState.CHASE) {
             if (repathCooldown <= 0f) {

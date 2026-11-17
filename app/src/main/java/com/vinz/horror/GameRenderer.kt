@@ -46,12 +46,15 @@ class GameRenderer(private val context: Context, private val events: GameEvents)
     private var uFogDensity = 0
     private var uTintColor = 0
     private var uAlpha = 0
+    private var uTime = 0
+    private var uResolution = 0
 
     private lateinit var floorMesh: GpuMesh
     private lateinit var ceilingMesh: GpuMesh
     private lateinit var wallMesh: GpuMesh
     private lateinit var monsterMesh: GpuMesh
     private lateinit var flashlightMesh: GpuMesh
+    private lateinit var pipeMesh: GpuMesh
 
     private var texWallD = 0
     private var texWallN = 0
@@ -61,6 +64,8 @@ class GameRenderer(private val context: Context, private val events: GameEvents)
     private var texCeilN = 0
     private var texMonsterD = 0
     private var texMonsterN = 0
+    private var texPipeD = 0
+    private var texPipeN = 0
 
     val mazeSize = 12
     private lateinit var maze: Maze
@@ -68,7 +73,9 @@ class GameRenderer(private val context: Context, private val events: GameEvents)
     private lateinit var monster: Monster
     private var gameOver = false
     private var respawnTimer = 0f
+    private var elapsedTime = 0f
     private val rnd = Random(System.currentTimeMillis())
+    private var propCells: List<Triple<Int, Int, Float>> = emptyList() // x, y, rotationDeg
 
     private val modelMat = FloatArray(16)
     private val viewMat = FloatArray(16)
@@ -95,8 +102,10 @@ class GameRenderer(private val context: Context, private val events: GameEvents)
         val q = ArrayDeque<Pair<Int, Int>>()
         q.addLast(0 to 0)
         var far = 0 to 0
+        val reachable = ArrayList<Pair<Int, Int>>()
         while (q.isNotEmpty()) {
             val (cx, cy) = q.removeFirst()
+            reachable.add(cx to cy)
             if (dist[cy][cx] > dist[far.second][far.first]) far = cx to cy
             for (d in 0..3) {
                 if (maze.hasWall(cx, cy, d)) continue
@@ -115,6 +124,19 @@ class GameRenderer(private val context: Context, private val events: GameEvents)
         monster = Monster(far.first, far.second)
         gameOver = false
         respawnTimer = 0f
+        elapsedTime = 0f
+
+        // Scatter a handful of pipe props as haunted-house clutter, density
+        // from the current graphics quality. Skip the start/monster cells.
+        val props = ArrayList<Triple<Int, Int, Float>>()
+        for ((cx, cy) in reachable) {
+            if (cx == 0 && cy == 0) continue
+            if (cx == far.first && cy == far.second) continue
+            if (rnd.nextFloat() < 0.12f * quality.propDensity) {
+                props.add(Triple(cx, cy, rnd.nextFloat() * 360f))
+            }
+        }
+        propCells = props
     }
 
     override fun onSurfaceCreated(gl: GL10?, config: EGLConfig?) {
@@ -142,6 +164,8 @@ class GameRenderer(private val context: Context, private val events: GameEvents)
         uFogDensity = GLES20.glGetUniformLocation(program, "uFogDensity")
         uTintColor = GLES20.glGetUniformLocation(program, "uTintColor")
         uAlpha = GLES20.glGetUniformLocation(program, "uAlpha")
+        uTime = GLES20.glGetUniformLocation(program, "uTime")
+        uResolution = GLES20.glGetUniformLocation(program, "uResolution")
 
         val assets = context.assets
         floorMesh = GpuMesh(ObjLoader.load(assets, "models/floor_tile.obj"))
@@ -149,6 +173,7 @@ class GameRenderer(private val context: Context, private val events: GameEvents)
         wallMesh = GpuMesh(ObjLoader.load(assets, "models/wall_segment.obj"))
         monsterMesh = GpuMesh(ObjLoader.load(assets, "models/monster.obj"))
         flashlightMesh = GpuMesh(ObjLoader.load(assets, "models/flashlight.obj"))
+        pipeMesh = GpuMesh(ObjLoader.load(assets, "models/pipe_prop.obj"))
 
         texWallD = TextureUtil.loadFromAssets(assets, "textures/wall_diffuse.png")
         texWallN = TextureUtil.loadFromAssets(assets, "textures/wall_normal.png")
@@ -158,6 +183,8 @@ class GameRenderer(private val context: Context, private val events: GameEvents)
         texCeilN = TextureUtil.loadFromAssets(assets, "textures/ceiling_normal.png")
         texMonsterD = TextureUtil.loadFromAssets(assets, "textures/monster_diffuse.png")
         texMonsterN = TextureUtil.loadFromAssets(assets, "textures/monster_normal.png")
+        texPipeD = TextureUtil.loadFromAssets(assets, "textures/pipe_diffuse.png")
+        texPipeN = TextureUtil.loadFromAssets(assets, "textures/pipe_normal.png")
 
         lastFrameNanos = System.nanoTime()
     }
@@ -173,6 +200,7 @@ class GameRenderer(private val context: Context, private val events: GameEvents)
         var dt = (now - lastFrameNanos) / 1_000_000_000f
         lastFrameNanos = now
         if (dt > 0.05f) dt = 0.05f
+        elapsedTime += dt
 
         if (!gameOver) {
             updateGame(dt)
@@ -209,6 +237,8 @@ class GameRenderer(private val context: Context, private val events: GameEvents)
         GLES20.glUniform3f(uFogColor, 0.01f, 0.01f, 0.015f)
         GLES20.glUniform1f(uFogDensity, quality.fogDensity)
         GLES20.glUniform1f(uAlpha, 1f)
+        GLES20.glUniform1f(uTime, elapsedTime)
+        GLES20.glUniform2f(uResolution, width.toFloat(), height.toFloat())
 
         val (pcx, pcz) = maze.worldToCell(player.x, player.z)
         val range = quality.drawDistanceCells
@@ -223,6 +253,7 @@ class GameRenderer(private val context: Context, private val events: GameEvents)
             }
         }
 
+        drawProps()
         drawMonster()
         drawFlashlightViewmodel()
 
@@ -247,8 +278,6 @@ class GameRenderer(private val context: Context, private val events: GameEvents)
     }
 
     private fun computeNormalMatrix(mat: FloatArray) {
-        // Our models never apply non-uniform scale, so the upper-left 3x3 of
-        // the model matrix is already a valid normal matrix.
         normalMat3[0] = mat[0]; normalMat3[1] = mat[1]; normalMat3[2] = mat[2]
         normalMat3[3] = mat[4]; normalMat3[4] = mat[5]; normalMat3[5] = mat[6]
         normalMat3[6] = mat[8]; normalMat3[7] = mat[9]; normalMat3[8] = mat[10]
@@ -292,13 +321,31 @@ class GameRenderer(private val context: Context, private val events: GameEvents)
         }
     }
 
+    private fun drawProps() {
+        if (propCells.isEmpty()) return
+        val (pcx, pcz) = maze.worldToCell(player.x, player.z)
+        val range = quality.drawDistanceCells
+        bindMaterial(texPipeD, texPipeN)
+        for ((cx, cy, rotDeg) in propCells) {
+            val ddx = cx - pcx
+            val ddz = cy - pcz
+            if (ddx * ddx + ddz * ddz > range * range) continue
+            val (ccx, ccz) = maze.cellCenter(cx, cy)
+            Matrix.setIdentityM(modelMat, 0)
+            Matrix.translateM(modelMat, 0, ccx, 0.9f, ccz)
+            Matrix.rotateM(modelMat, 0, rotDeg, 0f, 0f, 1f)
+            setModelAndDraw(pipeMesh, modelMat)
+        }
+    }
+
     private fun drawMonster() {
         val dx = monster.x - player.x
         val dz = monster.z - player.z
         val dist = sqrt(dx * dx + dz * dz)
         if (dist > quality.drawDistanceCells * TILE) return
         val facing = atan2(-dx, -dz)
-        bindMaterial(texMonsterD, texMonsterN, floatArrayOf(0.7f, 0.65f, 0.6f))
+        val tint = if (monster.isPhasing) floatArrayOf(0.55f, 0.62f, 0.75f) else floatArrayOf(0.7f, 0.65f, 0.6f)
+        bindMaterial(texMonsterD, texMonsterN, tint)
         Matrix.setIdentityM(modelMat, 0)
         Matrix.translateM(modelMat, 0, monster.x, 0f, monster.z)
         Matrix.rotateM(modelMat, 0, Math.toDegrees(facing.toDouble()).toFloat(), 0f, 1f, 0f)
